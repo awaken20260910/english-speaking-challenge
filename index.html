@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>English Speaking Challenge</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,"Noto Sans TC",sans-serif;background:linear-gradient(135deg,#dff3ff,#f4e8ff);color:#243047;min-height:100vh;padding:24px}
+main{max-width:760px;margin:20px auto;background:#fff;border-radius:24px;padding:30px;box-shadow:0 12px 35px #34445a20}
+h1{text-align:center;color:#385b9d;margin:0 0 8px}.sub{text-align:center;color:#667085;margin-bottom:25px}
+.progress{height:12px;background:#e8edf5;border-radius:20px;overflow:hidden;margin:15px 0 25px}.bar{height:100%;width:0;background:#48b58c;transition:width .3s}
+.counter{text-align:center;color:#64748b;font-weight:bold}.question{font-size:clamp(28px,5vw,42px);font-weight:bold;text-align:center;margin:28px 0;min-height:100px;display:grid;place-items:center;color:#263b69}
+button{border:0;border-radius:12px;padding:13px 20px;font-size:17px;font-weight:bold;cursor:pointer;margin:6px}
+.primary{background:#4169c8;color:white}.secondary{background:#eaf0ff;color:#3155a2}.success{background:#e5f8ee;color:#16734a}
+.controls{text-align:center}.status{text-align:center;min-height:56px;margin:18px 0;font-size:18px;font-weight:bold;color:#526078}
+.hint{text-align:center;color:#758197;font-size:14px;line-height:1.6}
+.hidden{display:none!important}
+form{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:22px}
+label{font-weight:bold;font-size:15px}input{width:100%;padding:12px;border:1px solid #cbd5e1;border-radius:10px;font-size:17px;margin-top:6px}
+.wide{grid-column:1/-1}.certificate{border:10px double #d5a83d;padding:34px 24px;text-align:center;margin-top:22px;background:#fffdf5}
+.certificate h2{font-size:34px;color:#a87916;margin:0 0 14px}.cert-name{font-size:28px;font-weight:bold;margin:22px 0;color:#273d70}.cert-text{font-size:19px;line-height:1.8}.cert-date{margin-top:30px;color:#687386}
+@media(max-width:560px){body{padding:10px}main{padding:20px 15px}form{grid-template-columns:1fr}.wide{grid-column:auto}}
+@media print{body{background:white;padding:0}main{box-shadow:none;margin:0;max-width:none;padding:0}.no-print{display:none!important}.certificate{display:block!important;margin:0;min-height:90vh;display:flex;flex-direction:column;justify-content:center}}
+</style>
+</head>
+<body>
+<main>
+<section id="game">
+<h1>🎤 English Speaking Challenge</h1>
+<p class="sub">英語口說闖關：六句全部正確，才能領取獎狀！</p>
+<div class="progress"><div class="bar" id="bar"></div></div>
+<div class="counter" id="counter">第 1 題 / 共 6 題</div>
+<div class="question" id="sentence">It's too tight.</div>
+<div class="controls">
+<button class="secondary" id="listenBtn" type="button">🔊 聽正確發音</button>
+<button class="primary" id="startBtn" type="button">🎙️ 開始朗讀</button>
+</div>
+<div class="status" id="status" aria-live="polite">請按「開始朗讀」，清楚念出句子。</div>
+<p class="hint">請允許瀏覽器使用麥克風，並在安靜的環境中朗讀。<br>必須完整念出整句，辨識正確後才能進入下一題。</p>
+</section>
+<section id="student" class="hidden">
+<h1>🎉 恭喜完成所有題目！</h1>
+<p class="sub">請填寫資料，產生專屬英語口說獎狀。</p>
+<form id="studentForm">
+<label>班級<input id="className" required placeholder="例如：701"></label>
+<label>座號<input id="seatNumber" required inputmode="numeric" placeholder="例如：05"></label>
+<label class="wide">姓名<input id="studentName" required placeholder="請輸入姓名"></label>
+<button class="primary wide" type="submit">🏆 產生獎狀</button>
+</form>
+</section>
+<section id="award" class="certificate hidden">
+<h2>🏆 英語口說闖關獎狀</h2>
+<p class="cert-text">恭喜以下同學完成全部六句英語朗讀挑戰，<br>表現認真，發音闖關成功，特頒此狀以資鼓勵。</p>
+<div class="cert-name" id="awardName"></div>
+<p class="cert-text">完成六句英語口說挑戰</p>
+<div class="cert-date" id="awardDate"></div>
+<p style="margin-top:34px">English Speaking Challenge</p>
+</section>
+<div class="controls no-print hidden" id="printControls">
+<button class="primary" onclick="window.print()">🖨️ 列印 / 另存 PDF</button>
+<button class="secondary" onclick="location.reload()">重新挑戰</button>
+</div>
+</main>
+<script>
+const sentences=["It's too tight.","It doesn't fit.","Not at all.","I appreciate it.","It's on me.","You're kidding."];
+let index=0,recognition=null,listening=false;
+const $=id=>document.getElementById(id);
+function normalize(s){return s.toLowerCase().replace(/[’‘]/g,"'").replace(/[^a-z0-9']/g," ").replace(/\s+/g," ").trim()}
+function update(){ $("sentence").textContent=sentences[index];$("counter").textContent=`第 ${index+1} 題 / 共 ${sentences.length} 題`;$("bar").style.width=(index/sentences.length*100)+"%";$("status").textContent="請按「開始朗讀」，清楚念出句子。";$("startBtn").disabled=false;$("startBtn").textContent="🎙️ 開始朗讀";}
+function speak(){if(!("speechSynthesis" in window)){alert("此瀏覽器不支援語音播放。");return}speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(sentences[index]);u.lang="en-US";u.rate=.85;speechSynthesis.speak(u)}
+function setupRecognition(){
+ const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+ if(!SR){$("status").textContent="目前瀏覽器不支援語音辨識，請使用最新版 Chrome。";$("startBtn").disabled=true;return}
+ recognition=new SR();recognition.lang="en-US";recognition.continuous=false;recognition.interimResults=false;recognition.maxAlternatives=5;
+ recognition.onstart=()=>{listening=true;$("startBtn").disabled=true;$("status").textContent="🎧 正在聆聽，請完整朗讀句子…"};
+ recognition.onresult=e=>{
+  const target=normalize(sentences[index]);let heard=[];
+  for(let i=0;i<e.results[0].length;i++)heard.push(e.results[0][i].transcript);
+  const matched=heard.some(t=>normalize(t)===target);
+  if(matched){$("status").textContent="🌟 太棒了！朗讀正確！";$("status").style.color="#168454";$("bar").style.width=((index+1)/sentences.length*100)+"%";$("startBtn").textContent="下一題";$("startBtn").disabled=false;$("startBtn").onclick=nextQuestion;}
+  else{$("status").textContent="❌ 念錯了，請再試一次！辨識結果："+(heard[0]||"未辨識到語音");$("status").style.color="#c0392b";$("startBtn").disabled=false;}
+ };
+ recognition.onerror=e=>{$("status").textContent=e.error==="not-allowed"?"麥克風權限未開啟，請在網址列允許使用麥克風。":"語音辨識發生問題，請再試一次（"+e.error+"）。";$("startBtn").disabled=false};
+ recognition.onend=()=>{listening=false;if($("startBtn").textContent!=="下一題")$("startBtn").disabled=false};
+}
+function nextQuestion(){index++;$("startBtn").onclick=startListening;if(index>=sentences.length){$("game").classList.add("hidden");$("student").classList.remove("hidden");return}update()}
+function startListening(){if(!recognition)setupRecognition();if(!recognition)return;if(listening)return;$("startBtn").disabled=true;try{recognition.start()}catch(e){$("status").textContent="麥克風正在啟動，請稍候再按一次。";$("startBtn").disabled=false}}
+$("startBtn").addEventListener("click",startListening);
+$("listenBtn").addEventListener("click",speak);
+$("studentForm").addEventListener("submit",e=>{e.preventDefault();const c=$("className").value.trim(),s=$("seatNumber").value.trim(),n=$("studentName").value.trim();if(!c||!s||!n)return;$("awardName").textContent=c+" 班　"+s+" 號　"+n;$("awardDate").textContent="頒發日期："+new Date().toLocaleDateString("zh-TW");$("student").classList.add("hidden");$("award").classList.remove("hidden");$("printControls").classList.remove("hidden");});
+update();
+</script>
+</body>
+</html>
