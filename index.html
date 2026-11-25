@@ -33,10 +33,10 @@ label{font-weight:bold;font-size:15px}input{width:100%;padding:12px;border:1px s
 <div class="question" id="sentence">It's too tight.</div>
 <div class="controls">
 <button class="secondary" id="listenBtn" type="button">🔊 聽正確發音</button>
-<button class="primary" id="startBtn" type="button">🎙️ 開始朗讀</button>
+<button class="primary" id="startBtn" type="button">🎙️ 開始自動挑戰</button>
 </div>
-<div class="status" id="status" aria-live="polite">請按「開始朗讀」，清楚念出句子。</div>
-<p class="hint">請允許瀏覽器使用麥克風，並在安靜的環境中朗讀。<br>必須完整念出整句，辨識正確後才能進入下一題。</p>
+<div class="status" id="status" aria-live="polite">請按「開始自動挑戰」，允許麥克風後，系統會自動聆聽六題。</div>
+<p class="hint">請允許瀏覽器使用麥克風，並在安靜的環境中朗讀。<br>答對會自動進入下一題；答錯或沒聽清楚時，會留在本題重新聆聽。</p>
 </section>
 <section id="student" class="hidden">
 <h1>🎉 恭喜完成所有題目！</h1>
@@ -63,29 +63,73 @@ label{font-weight:bold;font-size:15px}input{width:100%;padding:12px;border:1px s
 </main>
 <script>
 const sentences=["It's too tight.","It doesn't fit.","Not at all.","I appreciate it.","It's on me.","You're kidding."];
-let index=0,recognition=null,listening=false;
+let index=0,recognition=null,listening=false,autoMode=false,advancePending=false,fatalError=false;
 const $=id=>document.getElementById(id);
 function normalize(s){return s.toLowerCase().replace(/[’‘]/g,"'").replace(/[^a-z0-9']/g," ").replace(/\s+/g," ").trim()}
-function update(){ $("sentence").textContent=sentences[index];$("counter").textContent=`第 ${index+1} 題 / 共 ${sentences.length} 題`;$("bar").style.width=(index/sentences.length*100)+"%";$("status").textContent="請按「開始朗讀」，清楚念出句子。";$("startBtn").disabled=false;$("startBtn").textContent="🎙️ 開始朗讀";}
-function speak(){if(!("speechSynthesis" in window)){alert("此瀏覽器不支援語音播放。");return}speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(sentences[index]);u.lang="en-US";u.rate=.85;speechSynthesis.speak(u)}
+function update(){
+ $("sentence").textContent=sentences[index];
+ $("counter").textContent="第 "+(index+1)+" 題 / 共 "+sentences.length+" 題";
+ $("bar").style.width=(index/sentences.length*100)+"%";
+ $("status").textContent=autoMode?"🎧 準備聆聽，請完整朗讀句子…":"請按「開始自動挑戰」，允許麥克風後即可連續闖關。";
+ $("status").style.color="#526078";
+ $("startBtn").disabled=autoMode;
+ $("startBtn").textContent=autoMode?"🎧 自動聆聽中":"🎙️ 開始自動挑戰";
+}
+function speak(){
+ if(!("speechSynthesis" in window)){alert("此瀏覽器不支援語音播放。");return}
+ speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(sentences[index]);u.lang="en-US";u.rate=.85;speechSynthesis.speak(u)
+}
 function setupRecognition(){
  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
- if(!SR){$("status").textContent="目前瀏覽器不支援語音辨識，請使用最新版 Chrome。";$("startBtn").disabled=true;return}
+ if(!SR){$("status").textContent="目前瀏覽器不支援語音辨識，請使用最新版 Chrome。";$("startBtn").disabled=false;return false}
  recognition=new SR();recognition.lang="en-US";recognition.continuous=false;recognition.interimResults=false;recognition.maxAlternatives=5;
- recognition.onstart=()=>{listening=true;$("startBtn").disabled=true;$("status").textContent="🎧 正在聆聽，請完整朗讀句子…"};
+ recognition.onstart=()=>{listening=true;$("startBtn").disabled=true;$("startBtn").textContent="🎧 自動聆聽中";$("status").textContent="🎧 正在聆聽，請完整朗讀句子…"};
  recognition.onresult=e=>{
   const target=normalize(sentences[index]);let heard=[];
   for(let i=0;i<e.results[0].length;i++)heard.push(e.results[0][i].transcript);
   const matched=heard.some(t=>normalize(t)===target);
-  if(matched){$("status").textContent="🌟 太棒了！朗讀正確！";$("status").style.color="#168454";$("bar").style.width=((index+1)/sentences.length*100)+"%";$("startBtn").textContent="下一題";$("startBtn").disabled=false;$("startBtn").onclick=nextQuestion;}
-  else{$("status").textContent="❌ 念錯了，請再試一次！辨識結果："+(heard[0]||"未辨識到語音");$("status").style.color="#c0392b";$("startBtn").disabled=false;}
+  if(matched){
+   $("status").textContent="🌟 太棒了！朗讀正確，準備自動進入下一題…";
+   $("status").style.color="#168454";
+   $("bar").style.width=((index+1)/sentences.length*100)+"%";
+   advancePending=true;
+  }else{
+   $("status").textContent="❌ 念錯了，請再試一次！辨識結果："+(heard[0]||"未辨識到語音");
+   $("status").style.color="#c0392b";
+  }
  };
- recognition.onerror=e=>{$("status").textContent=e.error==="not-allowed"?"麥克風權限未開啟，請在網址列允許使用麥克風。":"語音辨識發生問題，請再試一次（"+e.error+"）。";$("startBtn").disabled=false};
- recognition.onend=()=>{listening=false;if($("startBtn").textContent!=="下一題")$("startBtn").disabled=false};
+ recognition.onerror=e=>{
+  const fatal=["not-allowed","service-not-allowed","audio-capture"].includes(e.error);
+  if(fatal){fatalError=true;autoMode=false;listening=false;$("status").textContent=e.error==="not-allowed"||e.error==="service-not-allowed"?"麥克風權限未開啟。請在網址列允許麥克風，再按「開始自動挑戰」。":"找不到可用的麥克風，請確認裝置連接與瀏覽器設定。";$("startBtn").disabled=false;$("startBtn").textContent="🎙️ 重新開始"}
+  else if(e.error==="no-speech"){$("status").textContent="沒有聽到聲音，請靠近麥克風再念一次…"}
+  else{$("status").textContent="語音辨識遇到問題，系統會再試一次（"+e.error+"）。"}
+ };
+ recognition.onend=()=>{
+  listening=false;
+  if(!autoMode||fatalError)return;
+  if(advancePending){
+   advancePending=false;index++;
+   if(index>=sentences.length){
+    autoMode=false;$("bar").style.width="100%";$("game").classList.add("hidden");$("student").classList.remove("hidden");return;
+   }
+   update();
+  }
+  if(autoMode){
+   $("startBtn").disabled=true;
+   setTimeout(()=>{if(autoMode&&!listening){try{recognition.start()}catch(err){$("status").textContent="麥克風重新啟動中，請稍候…";}}},250);
+  }
+ };
+ return true;
 }
-function nextQuestion(){index++;$("startBtn").onclick=startListening;if(index>=sentences.length){$("game").classList.add("hidden");$("student").classList.remove("hidden");return}update()}
-function startListening(){if(!recognition)setupRecognition();if(!recognition)return;if(listening)return;$("startBtn").disabled=true;try{recognition.start()}catch(e){$("status").textContent="麥克風正在啟動，請稍候再按一次。";$("startBtn").disabled=false}}
-$("startBtn").addEventListener("click",startListening);
+function startAutoChallenge(){
+ if(autoMode||listening)return;
+ if(!recognition&&!setupRecognition())return;
+ autoMode=true;fatalError=false;advancePending=false;
+ $("status").textContent="正在啟動麥克風，請開始朗讀第一題…";
+ $("startBtn").disabled=true;$("startBtn").textContent="🎧 自動聆聽中";
+ try{recognition.start()}catch(e){autoMode=false;$("startBtn").disabled=false;$("startBtn").textContent="🎙️ 開始自動挑戰";$("status").textContent="麥克風尚未就緒，請再按一次開始。"}
+}
+$("startBtn").addEventListener("click",startAutoChallenge);
 $("listenBtn").addEventListener("click",speak);
 $("studentForm").addEventListener("submit",e=>{e.preventDefault();const c=$("className").value.trim(),s=$("seatNumber").value.trim(),n=$("studentName").value.trim();if(!c||!s||!n)return;$("awardName").textContent=c+" 班　"+s+" 號　"+n;$("awardDate").textContent="頒發日期："+new Date().toLocaleDateString("zh-TW");$("student").classList.add("hidden");$("award").classList.remove("hidden");$("printControls").classList.remove("hidden");});
 update();
