@@ -31,7 +31,7 @@ label{font-weight:bold;font-size:15px}input{width:100%;padding:12px;border:1px s
 <div class="progress"><div class="bar" id="bar"></div></div>
 <div class="counter" id="counter">第 1 題 / 共 6 題</div>
 <div class="question" id="sentence">It's too tight.</div>
-<div class="mic-help" id="micHelp"><strong>🎤 第一步：開啟麥克風</strong><br>請按下方按鈕，瀏覽器跳出詢問時，選擇「允許」。<br><button class="primary" id="startBtn" type="button">🎤 開啟麥克風並開始挑戰</button><br><span style="font-size:13px;color:#765d2b">依瀏覽器安全規定，需要按一次按鈕才能開啟麥克風。</span></div>
+<div class="mic-help" id="micHelp"><strong>🎤 第一步：開啟麥克風</strong><br>請按下方按鈕，瀏覽器跳出詢問時，選擇「允許」。<br><button class="primary" id="startBtn" type="button">🎤 開啟麥克風並開始挑戰</button><br><button class="secondary" id="checkMicBtn" type="button">🔎 檢查麥克風是否被瀏覽器偵測</button><div id="micDiagnostic" style="font-size:14px;color:#38506d;margin-top:10px;white-space:pre-line" aria-live="polite">尚未檢查麥克風。</div><br><span style="font-size:13px;color:#765d2b">依瀏覽器安全規定，需要按一次按鈕才能開啟麥克風。</span></div>
 <div class="controls"><button class="secondary" id="listenBtn" type="button">🔊 聽正確發音</button></div>
 <div class="status" id="status" aria-live="polite">尚未開啟麥克風。按「開啟麥克風並開始挑戰」即可開始。</div>
 <p class="hint">答對會自動進入下一題；答錯或沒聽清楚時，會留在本題重新聆聽。</p>
@@ -119,6 +119,31 @@ function setupRecognition(){
  };
  return true;
 }
+async function checkMicrophone(){
+ const box=$("micDiagnostic");
+ box.textContent="正在檢查瀏覽器權限與麥克風裝置…";
+ if(!window.isSecureContext){box.textContent="目前不是安全連線。請使用 https://awaken20260910.github.io/english-speaking-challenge/";return;}
+ if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){box.textContent="瀏覽器不支援麥克風存取。請使用最新版 Chrome，並確認不是在網頁預覽／內嵌視窗中開啟。";return;}
+ let permissionText="權限狀態：瀏覽器未提供權限查詢資訊";
+ try{if(navigator.permissions&&navigator.permissions.query){const p=await navigator.permissions.query({name:"microphone"});permissionText="權限狀態："+({granted:"已允許",denied:"已封鎖",prompt:"尚未決定（應在要求權限時詢問）"}[p.state]||p.state);}}catch(e){}
+ let stream;
+ try{
+  stream=await navigator.mediaDevices.getUserMedia({audio:true});
+  const devices=await navigator.mediaDevices.enumerateDevices();
+  const mics=devices.filter(d=>d.kind==="audioinput");
+  const names=mics.map((d,i)=>(i+1)+". "+(d.label||"麥克風裝置 "+(i+1)));
+  box.textContent="✅ 瀏覽器已成功開啟麥克風！\n"+permissionText+"\n偵測到 "+mics.length+" 個麥克風："+(names.length?"\n"+names.join("\n"):"無裝置名稱");
+  $("status").textContent="麥克風檢查成功。若要闖關，請再按「開啟麥克風並開始挑戰」。";
+ }catch(err){
+  let reason=err.name;
+  if(err.name==="NotAllowedError"||err.name==="PermissionDeniedError")reason="權限遭封鎖：請點網址列左側的網站設定圖示 → 麥克風 → 允許，並重新整理。若仍不行，檢查 Windows 設定 → 隱私權與安全性 → 麥克風，確認允許桌面應用程式存取麥克風。";
+  else if(err.name==="NotFoundError")reason="找不到麥克風：請檢查麥克風是否插好、藍牙是否連線，以及 Windows 輸入裝置是否啟用。";
+  else if(err.name==="NotReadableError")reason="麥克風被其他程式占用或裝置無法讀取：請關閉 Teams、Meet、錄音程式後再試。";
+  else if(err.name==="SecurityError")reason="瀏覽器安全設定阻止麥克風存取，請使用上方 HTTPS 網址。";
+  box.textContent="❌ 無法開啟麥克風（"+err.name+"）\n"+permissionText+"\n"+reason;
+  $("status").textContent="麥克風檢查未通過，請依上方診斷訊息處理。";
+ }finally{if(stream)stream.getTracks().forEach(t=>t.stop());}
+}
 async function startAutoChallenge(){
  if(autoMode||listening)return;
  if(!window.isSecureContext){$("status").textContent="⚠️ 麥克風需要安全連線，請使用 https:// 開頭的 GitHub Pages 網址。";return;}
@@ -141,6 +166,7 @@ async function startAutoChallenge(){
  }
 }
 $("startBtn").addEventListener("click",startAutoChallenge);
+$("checkMicBtn").addEventListener("click",checkMicrophone);
 $("listenBtn").addEventListener("click",speak);
 $("studentForm").addEventListener("submit",e=>{e.preventDefault();const c=$("className").value.trim(),s=$("seatNumber").value.trim(),n=$("studentName").value.trim();if(!c||!s||!n)return;$("awardName").textContent=c+" 班　"+s+" 號　"+n;$("awardDate").textContent="頒發日期："+new Date().toLocaleDateString("zh-TW");$("student").classList.add("hidden");$("award").classList.remove("hidden");$("printControls").classList.remove("hidden");});
 update();
